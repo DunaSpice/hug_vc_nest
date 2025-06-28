@@ -1,7 +1,7 @@
 import asyncio
 import json
 import os
-from agents import Agent
+from agents import Agent, handoff
 from agents.tool import function_tool
 from agents.run import Runner
 
@@ -53,6 +53,22 @@ class HFCLIExecutor(Agent):
         }
         return result
 
+    @function_tool
+    async def list_models(self, author: str | None = None, limit: int = 10) -> list:
+        """List models via huggingface-cli with JSON output"""
+        args = ["list", "--limit", str(limit), "--json"]
+        if author:
+            args.extend(["--author", author])
+        result = await self.run_hf_cli("models", args)
+        return result["stdout"]
+
+    @function_tool
+    async def list_datasets(self, limit: int = 10) -> list:
+        """List datasets via huggingface-cli with JSON output"""
+        args = ["list", "--limit", str(limit), "--json"]
+        result = await self.run_hf_cli("datasets", args)
+        return result["stdout"]
+
     async def ensure_login(self, token: str):
         if self.session.get("hf_token") == token:
             return
@@ -77,11 +93,53 @@ async def full_mcp(token: str):
     for r in results:
         print(r)
 
+class HFChatAgent(Agent):
+    """Agent that chats with the user and delegates HF CLI work."""
+
+    name = "HF-CHAT-AGENT"
+
+    def __init__(self, hf_agent: HFCLIExecutor, *args, **kwargs):
+        self.hf_agent = hf_agent
+        super().__init__(
+            name=self.name,
+            handoffs=[
+                handoff(
+                    self.hf_agent,
+                    tool_name_override="hf_cli_agent",
+                    tool_description_override="Delegate CLI requests to HF agent",
+                )
+            ],
+            *args,
+            **kwargs,
+        )
+
+async def chat_with_agents(token: str, message: str):
+    hf_agent = HFCLIExecutor()
+    await hf_agent.ensure_login(token)
+    chat_agent = HFChatAgent(hf_agent)
+    result = await Runner.run(chat_agent, message)
+    print(result)
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) < 2:
-        print("Usage: python hf_cli_scenarios.py <HF_TOKEN>")
+        print("Usage: python hf_cli_scenarios.py <HF_TOKEN> [chat]")
         sys.exit(1)
     token = sys.argv[1]
-    asyncio.run(cli_chat(token))
-    asyncio.run(full_mcp(token))
+    if len(sys.argv) > 2 and sys.argv[2] == "chat":
+        async def interactive():
+            hf_agent = HFCLIExecutor()
+            await hf_agent.ensure_login(token)
+            chat_agent = HFChatAgent(hf_agent)
+            print("Starting interactive chat. Type 'exit' to quit.")
+            while True:
+                user_in = input("you> ")
+                if user_in.lower().strip() in {"exit", "quit"}:
+                    break
+                out = await Runner.run(chat_agent, user_in)
+                print("agent>", out)
+        asyncio.run(interactive())
+    else:
+        asyncio.run(cli_chat(token))
+        asyncio.run(full_mcp(token))
+        asyncio.run(chat_with_agents(token, "List two models"))
