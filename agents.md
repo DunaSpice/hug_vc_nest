@@ -7,7 +7,9 @@ This guide demonstrates idiomatic patterns for invoking `huggingface-cli` comman
 ## 1. Quick Start Snippet
 
 ```python
-from openai_agents import Agent, tool, run
+from agents import Agent
+from agents.tool import function_tool
+from agents.run import Runner
 import asyncio, json, textwrap
 
 HF_TIMEOUT = 30  # seconds
@@ -15,7 +17,7 @@ HF_TIMEOUT = 30  # seconds
 class HFCLIExecutor(Agent):
     name = "AG-EXEC-CLI"
 
-    @tool(name="run_hf_cli", description="Run huggingface-cli commands")
+    @function_tool(name="run_hf_cli", description="Run huggingface-cli commands")
     async def run_hf_cli(self, cmd: str, args: list[str] = []) -> dict:
         """Execute huggingface‑cli <cmd> <args> and return structured result"""
         proc = await asyncio.create_subprocess_exec(
@@ -47,7 +49,7 @@ class HFCLIExecutor(Agent):
 
 if __name__ == "__main__":
     # ad‑hoc run for local dev
-    print(run(agent=HFCLIExecutor(), instructions="run_hf_cli cmd='whoami'"))
+    print(asyncio.run(Runner.run(agent=HFCLIExecutor(), input="run_hf_cli cmd='whoami'")))
 ```
 
 ### Why this pattern?
@@ -157,6 +159,22 @@ async def test_models_list_json():
     out = await agent.run_hf_cli("models", ["list", "--limit", "1", "--json"])
     assert out["exit"] == 0
     assert isinstance(out["stdout"], list)
+```
+
+## 9. Delegating via Handoff
+
+Use the `handoff()` helper to create a chat agent that delegates CLI work to another agent. The SDK's `run_demo_loop` utility preserves conversation history between turns.
+
+```python
+from agents.repl import run_demo_loop
+class HFChatAgent(Agent):
+    def __init__(self, cli_agent: HFCLIExecutor):
+        super().__init__(name="HF-CHAT", tools=[
+            handoff(cli_agent, tool_name_override="hf_cli_agent")
+        ])
+
+# example interactive session with memory
+asyncio.run(run_demo_loop(HFChatAgent(HFCLIExecutor())))
 ```
 
 ---
