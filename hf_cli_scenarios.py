@@ -1,7 +1,9 @@
 import asyncio
 import json
 import os
-from openai_agents import Agent, tool, run
+from agents import Agent
+from agents.tool import function_tool
+from agents.run import Runner
 
 HF_TIMEOUT = 30
 SESSION_FILE = "session.json"
@@ -10,20 +12,21 @@ class HFCLIExecutor(Agent):
     name = "HF-CLI-EXECUTOR"
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.memory.setdefault("hf_token", None)
+        super().__init__(name=self.name, tools=[], *args, **kwargs)
+        self.session = {}
+        self.session.setdefault("hf_token", None)
         self._load_session()
+        self.tools.append(function_tool(self.run_hf_cli, name_override="run_hf_cli", description_override="Run huggingface-cli commands"))
 
     def _load_session(self):
         if os.path.exists(SESSION_FILE):
             with open(SESSION_FILE, "r") as f:
-                self.memory.update(json.load(f))
+                self.session.update(json.load(f))
 
     def _save_session(self):
         with open(SESSION_FILE, "w") as f:
-            json.dump(self.memory, f)
+            json.dump(self.session, f)
 
-    @tool(name="run_hf_cli", description="Run huggingface-cli commands")
     async def run_hf_cli(self, cmd: str, args: list[str] = None) -> dict:
         args = args or []
         proc = await asyncio.create_subprocess_exec(
@@ -51,10 +54,10 @@ class HFCLIExecutor(Agent):
         return result
 
     async def ensure_login(self, token: str):
-        if self.memory.get("hf_token") == token:
+        if self.session.get("hf_token") == token:
             return
         await self.run_hf_cli("login", ["--token", token])
-        self.memory["hf_token"] = token
+        self.session["hf_token"] = token
         self._save_session()
 
 async def cli_chat(token: str):
