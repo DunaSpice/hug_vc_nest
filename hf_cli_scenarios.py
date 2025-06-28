@@ -1,7 +1,9 @@
 import asyncio
 import json
 import os
-from openai_agents import Agent, tool, run
+from agents import Agent, handoff
+from agents.tool import function_tool
+from agents.run import Runner
 
 HF_TIMEOUT = 30
 SESSION_FILE = "session.json"
@@ -10,20 +12,21 @@ class HFCLIExecutor(Agent):
     name = "HF-CLI-EXECUTOR"
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.memory.setdefault("hf_token", None)
+        super().__init__(name=self.name, tools=[], *args, **kwargs)
+        self.session = {}
+        self.session.setdefault("hf_token", None)
         self._load_session()
+        self.tools.append(function_tool(self.run_hf_cli, name_override="run_hf_cli", description_override="Run huggingface-cli commands"))
 
     def _load_session(self):
         if os.path.exists(SESSION_FILE):
             with open(SESSION_FILE, "r") as f:
-                self.memory.update(json.load(f))
+                self.session.update(json.load(f))
 
     def _save_session(self):
         with open(SESSION_FILE, "w") as f:
-            json.dump(self.memory, f)
+            json.dump(self.session, f)
 
-    @tool(name="run_hf_cli", description="Run huggingface-cli commands")
     async def run_hf_cli(self, cmd: str, args: list[str] = None) -> dict:
         args = args or []
         proc = await asyncio.create_subprocess_exec(
@@ -50,11 +53,27 @@ class HFCLIExecutor(Agent):
         }
         return result
 
+    @function_tool
+    async def list_models(self, author: str | None = None, limit: int = 10) -> list:
+        """List models via huggingface-cli with JSON output"""
+        args = ["list", "--limit", str(limit), "--json"]
+        if author:
+            args.extend(["--author", author])
+        result = await self.run_hf_cli("models", args)
+        return result["stdout"]
+
+    @function_tool
+    async def list_datasets(self, limit: int = 10) -> list:
+        """List datasets via huggingface-cli with JSON output"""
+        args = ["list", "--limit", str(limit), "--json"]
+        result = await self.run_hf_cli("datasets", args)
+        return result["stdout"]
+
     async def ensure_login(self, token: str):
-        if self.memory.get("hf_token") == token:
+        if self.session.get("hf_token") == token:
             return
         await self.run_hf_cli("login", ["--token", token])
-        self.memory["hf_token"] = token
+        self.session["hf_token"] = token
         self._save_session()
 
 async def cli_chat(token: str):
@@ -74,11 +93,53 @@ async def full_mcp(token: str):
     for r in results:
         print(r)
 
+class HFChatAgent(Agent):
+    """Agent that chats with the user and delegates HF CLI work."""
+
+    name = "HF-CHAT-AGENT"
+
+    def __init__(self, hf_agent: HFCLIExecutor, *args, **kwargs):
+        self.hf_agent = hf_agent
+        super().__init__(
+            name=self.name,
+            handoffs=[
+                handoff(
+                    self.hf_agent,
+                    tool_name_override="hf_cli_agent",
+                    tool_description_override="Delegate CLI requests to HF agent",
+                )
+            ],
+            *args,
+            **kwargs,
+        )
+
+async def chat_with_agents(token: str, message: str):
+    hf_agent = HFCLIExecutor()
+    await hf_agent.ensure_login(token)
+    chat_agent = HFChatAgent(hf_agent)
+    result = await Runner.run(chat_agent, message)
+    print(result)
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) < 2:
-        print("Usage: python hf_cli_scenarios.py <HF_TOKEN>")
+        print("Usage: python hf_cli_scenarios.py <HF_TOKEN> [chat]")
         sys.exit(1)
     token = sys.argv[1]
-    asyncio.run(cli_chat(token))
-    asyncio.run(full_mcp(token))
+    if len(sys.argv) > 2 and sys.argv[2] == "chat":
+        async def interactive():
+            hf_agent = HFCLIExecutor()
+            await hf_agent.ensure_login(token)
+            chat_agent = HFChatAgent(hf_agent)
+            print("Starting interactive chat. Type 'exit' to quit.")
+            while True:
+                user_in = input("you> ")
+                if user_in.lower().strip() in {"exit", "quit"}:
+                    break
+                out = await Runner.run(chat_agent, user_in)
+                print("agent>", out)
+        asyncio.run(interactive())
+    else:
+        asyncio.run(cli_chat(token))
+        asyncio.run(full_mcp(token))
+        asyncio.run(chat_with_agents(token, "List two models"))
