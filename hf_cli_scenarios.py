@@ -5,6 +5,8 @@ from agents import Agent, handoff
 from agents.tool import function_tool
 from agents.run import Runner
 
+from agents.repl import run_demo_loop
+
 HF_TIMEOUT = 30
 SESSION_FILE = "session.json"
 
@@ -131,13 +133,10 @@ if __name__ == "__main__":
             hf_agent = HFCLIExecutor()
             await hf_agent.ensure_login(token)
             chat_agent = HFChatAgent(hf_agent)
-            print("Starting interactive chat. Type 'exit' to quit.")
-            while True:
-                user_in = input("you> ")
-                if user_in.lower().strip() in {"exit", "quit"}:
-                    break
-                out = await Runner.run(chat_agent, user_in)
-                print("agent>", out)
+
+            print("Starting interactive chat. Press Ctrl+C to exit.")
+            await run_demo_loop(chat_agent, stream=False)
+
         asyncio.run(interactive())
     else:
         asyncio.run(cli_chat(token))

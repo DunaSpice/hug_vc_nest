@@ -163,17 +163,20 @@ async def test_models_list_json():
 
 ## 9. Delegating via Handoff
 
-Use the `handoff()` helper to create a chat agent that delegates CLI work to another agent.
+
+Use the `handoff()` helper to create a chat agent that delegates CLI work to another agent. The SDK's `run_demo_loop` utility preserves conversation history between turns.
 
 ```python
+from agents.repl import run_demo_loop
 class HFChatAgent(Agent):
     def __init__(self, cli_agent: HFCLIExecutor):
         super().__init__(name="HF-CHAT", tools=[
             handoff(cli_agent, tool_name_override="hf_cli_agent")
         ])
 
-# example interactive session
-asyncio.run(Runner.run(HFChatAgent(HFCLIExecutor()), "whoami"))
+
+# example interactive session with memory
+asyncio.run(run_demo_loop(HFChatAgent(HFCLIExecutor())))
 ```
 
 ---

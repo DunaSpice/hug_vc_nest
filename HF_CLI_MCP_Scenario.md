@@ -42,7 +42,7 @@ async def run_hf_cli(self, cmd: str, args: list[str] = None) -> dict:
     ...  # parse stdout/stderr as shown in agents.md
 ```
 
-The `cli_chat()` coroutine logs in (if needed), runs `whoami`, and prints the result. `full_mcp()` triggers several CLI commands concurrently. `chat_with_agents()` demonstrates delegating user requests from `HFChatAgent` to `HFCLIExecutor` via a handoff. See `hf_cli_scenarios.py` for details.
+The `cli_chat()` coroutine logs in (if needed), runs `whoami`, and prints the result. `full_mcp()` triggers several CLI commands concurrently. `chat_with_agents()` demonstrates delegating user requests from `HFChatAgent` to `HFCLIExecutor` via a handoff. Interactive chat uses `run_demo_loop` from the SDK so conversation history is preserved between turns. See `hf_cli_scenarios.py` for details.
 
 ## Usage
 
@@ -51,4 +51,4 @@ python hf_cli_scenarios.py <HF_TOKEN>
 python hf_cli_scenarios.py <HF_TOKEN> chat
 ```
 
-On the first run, the token is saved to `session.json`. Subsequent runs reuse the token without prompting for login. The default run prints results for `cli_chat`, `full_mcp`, and a demo `chat_with_agents` conversation. Passing the `chat` argument starts an interactive session with `HFChatAgent`.
+On the first run, the token is saved to `session.json`. Subsequent runs reuse the token without prompting for login. The default run prints results for `cli_chat`, `full_mcp`, and a demo `chat_with_agents` conversation. Passing the `chat` argument starts an interactive session with `HFChatAgent` that keeps memory across turns.
