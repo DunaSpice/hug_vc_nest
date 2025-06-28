@@ -4,6 +4,7 @@ import os
 from agents import Agent, handoff
 from agents.tool import function_tool
 from agents.run import Runner
+
 from agents.repl import run_demo_loop
 
 HF_TIMEOUT = 30
@@ -132,6 +133,7 @@ if __name__ == "__main__":
             hf_agent = HFCLIExecutor()
             await hf_agent.ensure_login(token)
             chat_agent = HFChatAgent(hf_agent)
+
             print("Starting interactive chat. Press Ctrl+C to exit.")
             await run_demo_loop(chat_agent, stream=False)
 
