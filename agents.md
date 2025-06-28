@@ -161,6 +161,18 @@ async def test_models_list_json():
     assert isinstance(out["stdout"], list)
 ```
 
+## 9. Delegating via Handoff
+
+Use the `handoff()` helper to create a chat agent that delegates CLI work to another agent.
+
+```python
+class HFChatAgent(Agent):
+    def __init__(self, cli_agent: HFCLIExecutor):
+        super().__init__(name="HF-CHAT", tools=[
+            handoff(cli_agent, tool_name_override="hf_cli_agent")
+        ])
+```
+
 ---
 
 *Last updated: 2025‑06‑28*
